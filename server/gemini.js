@@ -1,42 +1,24 @@
-// wrapper for Gemini / LLM calls
 import axios from "axios";
 import dotenv from "dotenv";
 dotenv.config();
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+export async function callGemini(prompt, maxTokens = 800) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) return { text: `[[STUB — GEMINI KEY MISSING]] Prompt: ${prompt.slice(0, 600)}` };
 
-async function callGemini(prompt, opts = {}) {
-  // Replace with actual Gemini API integration.
-  // This function returns { text: string }.
-  // If you have @google/generative-ai client, swap implementation here.
-
-  if (!GEMINI_API_KEY) {
-    // fallback simple heuristic: echo prompt truncated for offline testing
-    return { text: `[[STUB RESULT — GEMINI KEY MISSING]]\nPrompt (truncated): ${prompt.slice(0, 800)}` };
-  }
-
-  // Example using a hypothetical REST endpoint — adapt to your real client library.
   try {
     const res = await axios.post(
-      "https://api.openai.com/v1/chat/completions", // replace with Gemini endpoint if needed
+      "https://api.openai.com/v1/chat/completions",
       {
-        model: "gpt-4o-mini", // swap with actual model id or gemini model
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: opts.max_tokens || 800
+        max_tokens: maxTokens
       },
-      {
-        headers: {
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
+      { headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" } }
     );
-    const text = res.data?.choices?.[0]?.message?.content || JSON.stringify(res.data);
-    return { text };
+    return { text: res.data.choices?.[0]?.message?.content || "" };
   } catch (err) {
-    console.error("LLM call failed:", err.response?.data || err.message);
-    throw new Error("LLM call failed");
+    console.error("Gemini API failed:", err.message);
+    throw new Error("Gemini API call failed");
   }
 }
-
-export { callGemini };
