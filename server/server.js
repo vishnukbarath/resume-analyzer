@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import { callGemini } from "./gemini.js";
 import { parseFile, cleanupFile } from "./parser.js";
@@ -9,11 +12,21 @@ import { extractFeatures, atsScore, jdKeywordMatch } from "./helpers.js";
 import dotenv from "dotenv";
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: "10mb" }));
-const upload = multer({ dest: "uploads/" });
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("Created uploads directory");
+}
+
+const upload = multer({ dest: uploadsDir });
 
 // Helper: get text from uploaded file
 async function getText(file) {
@@ -26,15 +39,40 @@ async function getText(file) {
 // ROUTES
 // --------------------
 
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "Server is running" });
+});
+
 // Analyze resume
-app.post("/api/analyze", upload.single("file"), async (req,res)=>{
+app.post("/api/analyze", (req, res, next) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      console.error("Multer upload error:", err);
+      return res.status(400).json({ error: `File upload error: ${err.message}` });
+    }
+    next();
+  });
+}, async (req,res)=>{
   try {
+    console.log("Analyze request received:", {
+      hasFile: !!req.file,
+      hasText: !!req.body.text,
+      fileName: req.file?.originalname,
+      fileSize: req.file?.size
+    });
+    
     let resumeText = "";
     
     // Handle file upload
     if (req.file) {
       try {
+        console.log("Processing file:", req.file.path, req.file.mimetype);
         resumeText = await getText(req.file);
+        console.log("File parsed successfully, text length:", resumeText.length);
+        if (!resumeText || !resumeText.trim()) {
+          return res.status(400).json({ error: "File appears to be empty or could not be parsed. Please ensure it's a valid PDF or DOCX file." });
+        }
       } catch (fileErr) {
         console.error("File parsing error:", fileErr);
         return res.status(400).json({ error: `File parsing failed: ${fileErr.message}` });
@@ -113,12 +151,15 @@ Limit arrays to 8 items each.
       };
     }
 
+    console.log("Analysis completed successfully");
     res.json({ ...llmJson, ats_score: ats, features });
   } catch(err) {
     console.error("Analysis error:", err);
+    console.error("Error stack:", err.stack);
     res.status(500).json({ 
       error: "Analysis failed", 
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined 
+      details: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 });

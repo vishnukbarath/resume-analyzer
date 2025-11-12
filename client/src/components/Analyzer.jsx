@@ -33,7 +33,25 @@ export default function Analyzer() {
       }
     } catch(e) {
       console.error("Analysis error:", e);
-      setError(e.response?.data?.error || e.message || "Analysis failed. Please check your connection and try again.");
+      console.error("Error response:", e.response);
+      
+      let errorMessage = "Analysis failed. ";
+      
+      if (e.response) {
+        // Server responded with error
+        errorMessage += e.response.data?.error || e.response.statusText || `Server error (${e.response.status})`;
+        if (e.response.data?.details) {
+          errorMessage += `: ${e.response.data.details}`;
+        }
+      } else if (e.request) {
+        // Request was made but no response received
+        errorMessage += "No response from server. Please ensure the server is running on port 5000.";
+      } else {
+        // Error in request setup
+        errorMessage += e.message || "Unknown error occurred.";
+      }
+      
+      setError(errorMessage);
     } finally { 
       setLoading(false); 
     }

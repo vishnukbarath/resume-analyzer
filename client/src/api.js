@@ -4,7 +4,10 @@ const BASE = "http://localhost:5000/api";
 export async function analyzeFile(file) {
   const form = new FormData();
   form.append("file", file);
-  const res = await axios.post(`${BASE}/analyze`, form, { headers: {'Content-Type': 'multipart/form-data'}});
+  const res = await axios.post(`${BASE}/analyze`, form, { 
+    headers: {'Content-Type': 'multipart/form-data'},
+    timeout: 60000 // 60 second timeout for file processing
+  });
   return res.data;
 }
 
