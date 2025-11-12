@@ -6,6 +6,9 @@ import multer from "multer";
 import { callGemini } from "./gemini.js";
 import { parseFile, cleanupFile } from "./parser.js";
 import { extractFeatures, atsScore, jdKeywordMatch } from "./helpers.js";
+import dotenv from "dotenv";
+dotenv.config();
+
 
 const app = express();
 app.use(cors());
@@ -26,8 +29,23 @@ async function getText(file) {
 // Analyze resume
 app.post("/api/analyze", upload.single("file"), async (req,res)=>{
   try {
-    const resumeText = req.body.text || (req.file ? await getText(req.file) : "");
-    if(!resumeText.trim()) return res.status(400).json({ error:"Resume text required" });
+    let resumeText = "";
+    
+    // Handle file upload
+    if (req.file) {
+      try {
+        resumeText = await getText(req.file);
+      } catch (fileErr) {
+        console.error("File parsing error:", fileErr);
+        return res.status(400).json({ error: `File parsing failed: ${fileErr.message}` });
+      }
+    } else if (req.body.text) {
+      resumeText = req.body.text;
+    }
+    
+    if(!resumeText || !resumeText.trim()) {
+      return res.status(400).json({ error:"Resume text required. Please provide either a file or text." });
+    }
 
     const features = extractFeatures(resumeText);
     const ats = atsScore(features);
@@ -49,13 +67,60 @@ Resume:
 ${resumeText}
 Limit arrays to 8 items each.
     `;
-    const llm = await callGemini(prompt, 800);
+    
     let llmJson = {};
-    try { llmJson = JSON.parse(llm.text.slice(llm.text.indexOf("{"))); }
-    catch { llmJson = { overall_score: Math.round((ats+70)/2), summary: llm.text.slice(0,800), strengths: [], weaknesses: [], missing_important_keywords: [], suggestions: [], best_fit_roles: [], estimated_salary_range: "" }; }
+    try {
+      const llm = await callGemini(prompt, 800);
+      
+      // Try to parse JSON from response
+      const jsonStart = llm.text.indexOf("{");
+      if (jsonStart === -1) {
+        throw new Error("No JSON found in response");
+      }
+      
+      const jsonText = llm.text.slice(jsonStart);
+      const jsonEnd = jsonText.lastIndexOf("}");
+      if (jsonEnd === -1) {
+        throw new Error("Invalid JSON format");
+      }
+      
+      llmJson = JSON.parse(jsonText.slice(0, jsonEnd + 1));
+      
+      // Validate required fields
+      if (typeof llmJson.overall_score !== 'number') {
+        llmJson.overall_score = Math.round((ats + 70) / 2);
+      }
+      if (!Array.isArray(llmJson.strengths)) llmJson.strengths = [];
+      if (!Array.isArray(llmJson.weaknesses)) llmJson.weaknesses = [];
+      if (!Array.isArray(llmJson.missing_important_keywords)) llmJson.missing_important_keywords = [];
+      if (!Array.isArray(llmJson.suggestions)) llmJson.suggestions = [];
+      if (!Array.isArray(llmJson.best_fit_roles)) llmJson.best_fit_roles = [];
+      if (typeof llmJson.summary !== 'string') llmJson.summary = llm.text.slice(0, 800);
+      if (typeof llmJson.estimated_salary_range !== 'string') llmJson.estimated_salary_range = "";
+      
+    } catch (parseErr) {
+      console.error("JSON parsing error:", parseErr);
+      // Fallback response
+      llmJson = { 
+        overall_score: Math.round((ats + 70) / 2), 
+        summary: "Unable to parse AI response. Basic analysis completed.", 
+        strengths: [], 
+        weaknesses: [], 
+        missing_important_keywords: [], 
+        suggestions: [], 
+        best_fit_roles: [], 
+        estimated_salary_range: "" 
+      };
+    }
 
     res.json({ ...llmJson, ats_score: ats, features });
-  } catch(err){ console.error(err); res.status(500).json({ error:"Analysis failed" }); }
+  } catch(err) {
+    console.error("Analysis error:", err);
+    res.status(500).json({ 
+      error: "Analysis failed", 
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    });
+  }
 });
 
 // JD Match
@@ -64,7 +129,18 @@ app.post("/api/jd-match", upload.single("file"), async (req,res)=>{
     const jdText = req.body.jd || "";
     if(!jdText.trim()) return res.status(400).json({ error:"JD required" });
 
-    const resumeText = req.body.text || (req.file ? await getText(req.file) : "");
+    let resumeText = "";
+    if (req.file) {
+      try {
+        resumeText = await getText(req.file);
+      } catch (fileErr) {
+        console.error("File parsing error:", fileErr);
+        return res.status(400).json({ error: `File parsing failed: ${fileErr.message}` });
+      }
+    } else if (req.body.text) {
+      resumeText = req.body.text;
+    }
+    
     if(!resumeText.trim()) return res.status(400).json({ error:"Resume required" });
 
     const { jdKeywords, present, missing, matchScore } = jdKeywordMatch(resumeText, jdText, 20);
@@ -72,35 +148,93 @@ app.post("/api/jd-match", upload.single("file"), async (req,res)=>{
     const llm = await callGemini(prompt, 500);
 
     res.json({ matchScore, jdKeywords, present, missing, llm: llm.text });
-  } catch(err){ console.error(err); res.status(500).json({error:"JD match failed"}); }
+  } catch(err){ 
+    console.error("JD match error:", err); 
+    res.status(500).json({
+      error:"JD match failed",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }); 
+  }
 });
 
 // Resume Rewriter
 app.post("/api/rewriter", upload.single("file"), async (req,res)=>{
   try {
-    const resumeText = req.body.text || (req.file ? await getText(req.file) : "");
+    let resumeText = "";
+    if (req.file) {
+      try {
+        resumeText = await getText(req.file);
+      } catch (fileErr) {
+        console.error("File parsing error:", fileErr);
+        return res.status(400).json({ error: `File parsing failed: ${fileErr.message}` });
+      }
+    } else if (req.body.text) {
+      resumeText = req.body.text;
+    }
+    
     if(!resumeText.trim()) return res.status(400).json({error:"Resume required"});
     const role = req.body.role || "Software Engineer";
 
     const prompt = `Rewrite resume for ATS and role: ${role}. Keep bullets, strong verbs, quantify results. Resume: ${resumeText}`;
     const llm = await callGemini(prompt, 1200);
     res.json({ rewritten: llm.text });
-  } catch(err){ console.error(err); res.status(500).json({error:"Rewriter failed"}); }
+  } catch(err){ 
+    console.error("Rewriter error:", err); 
+    res.status(500).json({
+      error:"Rewriter failed",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }); 
+  }
 });
 
 // Skill Extractor
 app.post("/api/extract-skills", upload.single("file"), async (req,res)=>{
   try {
-    const resumeText = req.body.text || (req.file ? await getText(req.file) : "");
+    let resumeText = "";
+    if (req.file) {
+      try {
+        resumeText = await getText(req.file);
+      } catch (fileErr) {
+        console.error("File parsing error:", fileErr);
+        return res.status(400).json({ error: `File parsing failed: ${fileErr.message}` });
+      }
+    } else if (req.body.text) {
+      resumeText = req.body.text;
+    }
+    
     if(!resumeText.trim()) return res.status(400).json({error:"Resume required"});
 
     const prompt = `Extract skills from resume as JSON { "hard_skills":[], "soft_skills":[], "tools":[], "certifications":[] }. Limit 30. Resume: ${resumeText}`;
     const llm = await callGemini(prompt, 500);
 
     let data = {};
-    try { data = JSON.parse(llm.text.slice(llm.text.indexOf("{"))); } catch { data = { hard_skills: [], soft_skills: [], tools: [], certifications: [] }; }
+    try { 
+      const jsonStart = llm.text.indexOf("{");
+      if (jsonStart !== -1) {
+        const jsonText = llm.text.slice(jsonStart);
+        const jsonEnd = jsonText.lastIndexOf("}");
+        if (jsonEnd !== -1) {
+          data = JSON.parse(jsonText.slice(0, jsonEnd + 1));
+        }
+      }
+    } catch (parseErr) {
+      console.error("JSON parsing error:", parseErr);
+    }
+    
+    // Ensure all required fields exist
+    if (!data.hard_skills) data.hard_skills = [];
+    if (!data.soft_skills) data.soft_skills = [];
+    if (!data.tools) data.tools = [];
+    if (!data.certifications) data.certifications = [];
+    
     res.json({ ...data, raw: llm.text });
-  } catch(err){ console.error(err); res.status(500).json({error:"Skill extraction failed"}); }
+  } catch(err){ 
+    console.error("Skill extraction error:", err); 
+    res.status(500).json({
+      error:"Skill extraction failed",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }); 
+  }
 });
 
 // Cover Letter
@@ -112,7 +246,13 @@ app.post("/api/cover-letter", async (req,res)=>{
     const prompt = `Generate a professional one-page cover letter using resume and JD. Resume: ${resume} JD: ${jd}`;
     const llm = await callGemini(prompt, 600);
     res.json({ letter: llm.text });
-  } catch(err){ console.error(err); res.status(500).json({error:"Cover letter failed"}); }
+  } catch(err){ 
+    console.error("Cover letter error:", err); 
+    res.status(500).json({
+      error:"Cover letter failed",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }); 
+  }
 });
 
 // Multi-Resume Rank
@@ -123,18 +263,36 @@ app.post("/api/multi-rank", upload.array("files",50), async (req,res)=>{
 
     const results = [];
     for(const f of files){
-      const txt = await getText(f);
-      const features = extractFeatures(txt);
-      const ats = atsScore(features);
+      try {
+        const txt = await getText(f);
+        const features = extractFeatures(txt);
+        const ats = atsScore(features);
 
-      const prompt = `Summarize resume and suggest best-fit role. Resume: ${txt.slice(0,2000)}`;
-      let summary="";
-      try{ summary = (await callGemini(prompt,200)).text; } catch{}
-      results.push({ filename: f.originalname, atsScore: ats, summary });
+        const prompt = `Summarize resume and suggest best-fit role. Resume: ${txt.slice(0,2000)}`;
+        let summary="";
+        try{ summary = (await callGemini(prompt,200)).text; } catch(summaryErr){
+          console.error(`Summary generation failed for ${f.originalname}:`, summaryErr);
+          summary = "Summary generation failed";
+        }
+        results.push({ filename: f.originalname, atsScore: ats, summary });
+      } catch(fileErr) {
+        console.error(`Error processing file ${f.originalname}:`, fileErr);
+        results.push({ 
+          filename: f.originalname, 
+          atsScore: 0, 
+          summary: `Error: ${fileErr.message}` 
+        });
+      }
     }
     results.sort((a,b)=>b.atsScore-a.atsScore);
     res.json({ results });
-  }catch(err){ console.error(err); res.status(500).json({error:"Multi-rank failed"}); }
+  }catch(err){ 
+    console.error("Multi-rank error:", err); 
+    res.status(500).json({
+      error:"Multi-rank failed",
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }); 
+  }
 });
 
 // --------------------
