@@ -174,3 +174,72 @@ resume-analyzer/
 │   ├── gemini.js
 │   └── .env
 │── README.md
+🧪 Testing Your Setup
+
+After backend start, test Gemini connectivity:
+
+curl -X POST http://localhost:5000/analyze \
+-H "Content-Type: application/json" \
+-d '{"resume":"senior python developer"}'
+
+
+If your API key is correct, you'll receive structured JSON output.
+
+🛡 Troubleshooting
+❌ “Gemini API call failed: 400”
+
+Fix:
+
+Your payload format is wrong
+
+You must use
+
+{ "prompt": { "text": "your text" } }
+
+
+Key may have whitespace → remove spaces/newlines
+
+Restart server after editing .env
+
+❌ undefined API Key
+
+Rename .env.example → .env
+
+Ensure:
+
+GEMINI_API_KEY=AbCdEf123
+
+❌ Empty response / analysis stuck
+
+Restart backend
+
+Ensure you are calling v1beta/generateContent
+
+Use correct endpoint:
+
+gemini-1.5-flash-latest:generateContent
+
+🎯 Roadmap (Planned Enhancements)
+
+PDF resume upload
+
+Multi-model support (Gemini Pro / GPT-4 / Llama)
+
+Chrome Extension
+
+Auto-format Resume Builder
+
+Chat-style career assistant
+
+🤝 Contributing
+
+Pull requests are welcome!
+For major changes, open an issue first to discuss your idea.
+
+📜 License
+
+This project is licensed under the MIT License.
+
+⭐ Support
+
+If you find this helpful, consider giving the repository a star ★ on GitHub.
