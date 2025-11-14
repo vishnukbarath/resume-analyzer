@@ -1,0 +1,176 @@
+🚀 Resume Analyzer — AI-Powered Resume Evaluation (Gemini 1.5 Flash)
+
+A full-stack AI-driven system that analyzes resumes, extracts skills, evaluates ATS scores, generates summaries, identifies weaknesses, compares resumes with job descriptions, and produces tailored improvements — all powered by Google Gemini 1.5 Flash.
+
+This project includes:
+
+✔ Resume Analyzer
+✔ ATS Score Calculator
+✔ JD Matching
+✔ Resume Rewriter
+✔ Keyword Extractor
+✔ Salary Estimator
+✔ Role Recommendations
+✔ Full REST API Backend
+✔ Modern Frontend UI
+
+📌 Features
+🔍 Resume Analysis
+
+Generates an overall score
+
+ATS compatibility score
+
+Strengths & weaknesses
+
+Missing keywords
+
+Professional summary
+
+Salary estimate
+
+Best-fit job roles
+
+🧠 Job Description Matcher
+
+Matches your resume against a job description
+
+Computes JD match %
+
+Extracts required vs missing skills
+
+Generates improvements
+
+✍️ Resume Rewriter
+
+Enhances grammar, impact, ATS friendliness
+
+Improves bullet points
+
+🧩 Skills Extractor
+
+Extracts technical + soft skills
+
+Highlights missing skills
+
+📄 Cover Letter Generator
+
+Creates personalized cover letters instantly
+
+🛠 Tech Stack
+Frontend
+
+React (Vite)
+
+TailwindCSS
+
+Axios
+
+Backend
+
+Node.js
+
+Express.js
+
+Axios
+
+Gemini 1.5 Flash API
+
+AI Model
+
+Google Gemini 1.5 Flash
+
+Fast, cheap, highly capable for structured text analysis
+
+🚀 Installation Guide
+1️⃣ Clone the Repository
+git clone https://github.com/your-username/resume-analyzer.git
+cd resume-analyzer
+
+🖥 Backend Setup (Node + Express)
+2️⃣ Install Server Dependencies
+cd server
+npm install
+
+3️⃣ Configure Environment
+
+Create:
+
+server/.env
+
+
+Add:
+
+GEMINI_API_KEY=YOUR_KEY_HERE
+PORT=5000
+
+
+⚠ Ensure the key has no spaces, no extra characters, and no quotes.
+
+4️⃣ Start Backend
+node server.js
+
+
+Backend runs on:
+
+http://localhost:5000
+
+🌐 Frontend Setup
+5️⃣ Install Client Dependencies
+cd ../client
+npm install
+
+6️⃣ Start Frontend
+npm run dev
+
+
+Frontend runs on:
+
+http://localhost:5173
+
+🔗 API Endpoints
+POST /analyze
+
+Analyze resume text
+Request:
+
+{
+  "resume": "text_here"
+}
+
+POST /match
+
+Match resume with job description
+Request:
+
+{
+  "resume": "text_here",
+  "job_description": "jd_here"
+}
+
+POST /rewrite
+
+Rewrite resume professionally
+Request:
+
+{
+  "resume": "text_here"
+}
+
+POST /skills
+
+Extract skills
+Request:
+
+{
+  "resume": "text_here"
+}
+
+📦 Project Structure
+resume-analyzer/
+│── client/             # React Frontend
+│── server/             # Express Backend
+│   ├── server.js
+│   ├── gemini.js
+│   └── .env
+│── README.md
